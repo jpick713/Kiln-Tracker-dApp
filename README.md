@@ -19,6 +19,9 @@ initial run do
 3. `migrate --reset` for local deployment
 4. `npm run start`
 
+**Simulator uses openSSL, if it has trouble running the simulator then go to the pebble-simulator iotex github repository**
+
+[pebble-simulator home](https://github.com/iotexproject/pebble-simulator)
 
 ### `npm start`
 
