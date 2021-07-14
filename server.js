@@ -82,6 +82,42 @@ app.get('/run_simulator', (req, res) => {
         console.error(`child stderr:\n${data}`);
       });
     
-    res.send({simComplete : true});
-      
+    res.send({simComplete : true});  
 })
+
+app.get('/run_simulator_verify', (req, res) => {
+    fs.writeFile('./pebble-simulator/privKeyVerify', req.query.PrivKey, function (err) {
+        if (err) return console.log(err);
+      });
+    
+    var data = fs.readFileSync('./pebble-simulator/simulatorVerify.sh').toString().split("\n");
+    data[6] = `TargetMax=${req.query.TargetMax}`;
+    data[7] = `TargetMin=${req.query.TargetMin}`;
+    data[61] = `START=${req.query.Start}`;
+    data[62] = `DELTA=${req.query.Delta}`;
+    var text = data.join("\n");
+    fs.writeFile('./pebble-simulator/simulatorVerify.sh', text, function (err) {
+        if (err) return console.log(err);
+      });
+    
+    const child = exec('bash ./pebble-simulator/simulatorVerify.sh');
+    
+    child.stdout.on('data', (data) => {
+        console.log(`child stdout:\n${data}`);
+      });
+      
+    child.stderr.on('data', (data) => {
+        console.error(`child stderr:\n${data}`);
+      });
+
+    
+    
+    res.send({simComplete : true});  
+})
+
+app.get('/deal_verify_final', (req, res) => {
+    var dataLog = fs.readFileSync('./pebble.dat').toString().split("\n");
+    
+    res.send({dataVerify : dataLog});
+})
+

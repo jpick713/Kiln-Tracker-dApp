@@ -29,6 +29,8 @@ class App extends React.Component {
       AdminAddressToAdd : null,
       adminList : [],
       deviceList : [],
+      originatorDealList : [],
+      companyDealList : [],
       adminString : "",
       deviceIMEI : "",
       firstLine : "",
@@ -37,8 +39,12 @@ class App extends React.Component {
       AddressToWhiteList : "",
       AddressToBlackList : "",
       deviceString : "",
+      originatorString : "",
+      companyDealString : "",
       IMEISearch : "",
       IMEISearchResult : "",
+      AddressDealSearch : "",
+      AddressDealSearchResult : "",
       FormAddress : "",
       FormID : "",
       FormIMEI : "",
@@ -48,12 +54,16 @@ class App extends React.Component {
       FormMaxThreshold : 0,
       FormTotalCounts : 0,
       FormGasResistance : 0,
+      UUIDVerify : "",
+      primedVerify : false,
+      storeUUIDforVerify : ""
     };
     
     this.addrFind = this.addrFind.bind(this);
     this.setStorageAddr = this.setStorageAddr.bind(this);
     this.showStorageAddr = this.showStorageAddr.bind(this);
     this.runPebbleSimulator = this.runPebbleSimulator.bind(this);
+    this.runPebbleSimulatorVerify = this.runPebbleSimulatorVerify.bind(this);
     this.AddAdminAddress = this.AddAdminAddress.bind(this);
     this.getAccountBalances = this.getAccountBalances.bind(this);
     this.RegisterDevice = this.RegisterDevice.bind(this);
@@ -61,6 +71,7 @@ class App extends React.Component {
     this.BlackListAddress = this.BlackListAddress.bind(this);
     this.IMEISearch = this.IMEISearch.bind(this);
     this.InitiateDeal = this.InitiateDeal.bind(this);
+    this.DealSearchByAddress = this.DealSearchByAddress.bind(this);
   }
 
   
@@ -119,18 +130,25 @@ class App extends React.Component {
       const storageAddress = await escrowTarget.methods.storageContract().call();
       const adminList = await stateMonitor.methods.getAllAdmins().call();
       const deviceList = await stateMonitor.methods.getAllOwnersDevices(this.state.account).call(); 
-      this.setState({ownerMonitor, escrowAddress, storageAddress, adminList, deviceList});
+      const originatorDealList = await stateMonitor.methods.getOriginatorsDeals(this.state.account).call();
+      this.setState({ownerMonitor, escrowAddress, storageAddress, adminList, deviceList, originatorDealList});
       var deviceString = "";
       if(deviceList.length>0){
         for (var i=0; i<this.state.deviceList.length; i++){
         deviceString += `<tr><td>${deviceList[i].IMEI}</td><td>${deviceList[i].deviceAddress}</td></tr>`;
         }
       }
+      var originatorString = "";
+      if(originatorDealList.length>0){
+        for (var i=0; i<this.state.originatorDealList.length; i++){
+        originatorString += `<tr><td>${originatorDealList[i].uuid}</td><td>${originatorDealList[i].companyAddress}</td><td>${originatorDealList[i].companyID}</td></tr>`;
+        }
+      }
       var adminString = `${this.state.adminList[0]}`;
       for (var i=1; i<this.state.adminList.length; i++){
         adminString +=`, ${this.state.adminList[i]}`;
       }
-      this.setState({adminString, deviceString});
+      this.setState({adminString, deviceString, originatorString});
       
     } else {
       window.alert('State Monitor contract not deployed to detected network.')
@@ -141,14 +159,21 @@ class App extends React.Component {
   window.ethereum.on('accountsChanged', async (accounts) => {
     this.setState({account : accounts[0]});
     const deviceList = await this.state.monitorContract.methods.getAllOwnersDevices(this.state.account).call(); 
-    this.setState({deviceList});
+    const originatorDealList = await this.state.monitorContract.methods.getOriginatorsDeals(this.state.account).call();
+    this.setState({deviceList, originatorDealList, AddressDealSearch : "", AddressDealSearchResult : ""});
     var deviceString = "";
     if(deviceList.length>0){
       for (var i=0; i<this.state.deviceList.length; i++){
           deviceString += `<tr><td>${deviceList[i].IMEI}</td><td>${deviceList[i].deviceAddress}</td></tr>`;
         }
       }
-    this.setState({deviceString});
+    var originatorString = "";
+    if(originatorDealList.length>0){
+      for (var i=0; i<this.state.originatorDealList.length; i++){
+        originatorString += `<tr><td>${originatorDealList[i].uuid}</td><td>${originatorDealList[i].companyAddress}</td><td>${originatorDealList[i].companyID}</td></tr>`;
+      }
+    }
+    this.setState({deviceString, originatorString, primedVerify : false});
   });
 }
 
@@ -164,7 +189,7 @@ class App extends React.Component {
     const addr = body.currentAddr;
     const firstLine = body.firstLine;
     const checkSumAddr = window.web3.utils.toChecksumAddress(addr);
-    this.setState({dataAddr : checkSumAddr, firstLine});
+    this.setState({dataAddr : checkSumAddr, firstLine, primedVerify : false});
     return body;
   };
 
@@ -216,11 +241,79 @@ class App extends React.Component {
   if (response.status !== 200) {
     throw Error(body.message)
   }
+  this.setState({primedVerify : false});
   return body;
+  }
+
+  runPebbleSimulatorVerify = async (event) => {
+    event.preventDefault();
+    const isAdmin = await this.state.monitorContract.methods.adminMap(this.state.account).call();
+    if (!isAdmin){
+      alert(`will need an admin account to verify a deal`);
+      this.setState({UUIDVerify : ""});
+      return;
+    }
+    const deal = await this.state.monitorContract.methods.deals(this.state.UUIDVerify).call();
+    if(!deal.isActive){
+      alert('can only verify active deals');
+      this.setState({UUIDVerify : ""});
+      return;
+    }
+    const device = await this.state.monitorContract.methods.deviceIMEIs(deal.deviceIMEI).call();
+    if(!device.exists){
+      alert('can only verify deals with still registered devices'); //the delete device function not added, but if you had it this line is needed
+      this.setState({UUIDVerify : ""});
+      return;
+    }
+    const verifyInfo = await this.state.escrowContract.methods.verificationInfo(this.state.UUIDVerify).call();
+    if(verifyInfo.paidOut){
+      alert('this deal has already been paid out');
+      this.setState({UUIDVerify : ""});
+      return;
+    }
+    const privKeyVerify = device.privKey;
+    const start = verifyInfo.timeStart;
+    const delta = Math.floor((verifyInfo.timeEnd - verifyInfo.timeStart)/10);
+    const TargetMin = Math.round(0.7 * verifyInfo.gasResistanceTarget);
+    const TargetMax = Math.round(1.1* verifyInfo.gasResistanceTarget);
+    const response = await fetch(`/run_simulator_verify?Start=${start}&Delta=${delta}&TargetMax=${TargetMax}&TargetMin=${TargetMin}&PrivKey=${privKeyVerify}`);
+    const body = await response.json();
+         
+    if (response.status !== 200) {
+      throw Error(body.message)
+    }
+
+    this.setState({primedVerify : true});
+    this.setState({storeUUIDforVerify : this.state.UUIDVerify})
+
+    return body;
+    }
+
+  VerifyDealData = async (event) => {
+    event.preventDefault();
+    const response = await fetch('/deal_verify_final');
+    const body = await response.json();
+    const msgArray = body.dataVerify;
+    for (var i=0; i< 12; i++){
+    const msgString = msgArray[i];
+    const s = "0x" + msgString.substring(msgString.length-67, msgString.length-3);
+    const r = "0x" + msgString.substring(msgString.length-138, msgString.length-74);
+    const msgRaw = msgString.substring(0, msgString.length-157)+"}";
+    var colonSplit = msgString.split(":");
+    const gasResistance = Number(colonSplit[6].split(",")[0]);
+    const timeStamp = Number(colonSplit[14].split('"')[1]);
+    
+
+    await this.state.escrowContract.methods.checkDealInfo(msgRaw, r, s, this.state.storeUUIDforVerify, gasResistance, timeStamp).send({from: this.state.account});     
+    //const addressesArray = await this.state.escrowContract.methods.returnSimulatorAddresses().call();
+    }
+    this.setState({primedVerify : false, UUIDVerify : ""});
+    return body;
   }
 
   RegisterDevice = async (event) => {
     event.preventDefault();
+    this.setState({primedVerify : false});
     if(this.state.deviceIMEI.trim().length!==15){
       alert('IMEI must be 15 characters!');
       return;
@@ -367,7 +460,27 @@ class App extends React.Component {
     intArray.push(Math.round(this.state.FormMaxThreshold)); intArray.push(gasResistance);
     intArray.push(currentUnix);
     //alert(`${intArray[1]} versus ${intArray[6]} __ ${Math.round(this.state.FormTimeEnd)*24*3600}`)
-    await this.state.monitorContract.methods.initiateDeal(companyAddress, companyID, intArray, IMEI).send({from : this.state.account});
+    await this.state.monitorContract.methods.initiateDeal(companyAddress, companyID, intArray, IMEI).send({from : this.state.account}).on('transactionHash', async (hash) => {
+    const originatorDealList = await this.state.monitorContract.methods.getOriginatorsDeals(this.state.account).call();
+    this.setState({originatorDealList});
+    var originatorString = "";
+      if(originatorDealList.length>0){
+        for (var i=0; i<this.state.originatorDealList.length; i++){
+        originatorString += `<tr><td>${originatorDealList[i].uuid}</td><td>${originatorDealList[i].companyAddress}</td><td>${originatorDealList[i].companyID}</td></tr>`;
+        }
+      }
+    this.setState({originatorString});
+    });
+  }
+
+  DealSearchByAddress = async () => {
+    const companyDealList = await this.state.monitorContract.methods.getCompanyDeals(this.state.AddressDealSearch).call();
+    this.setState({companyDealList});
+    var AddressDealSearchResult = "";
+    for (var i=0; i< companyDealList.length; i++){
+      AddressDealSearchResult += `<div>UUID : ${this.state.companyDealList[i].uuid}</div>`;
+    }
+    this.setState({AddressDealSearchResult, AddressDealSearch : ""});
   }
   
 
@@ -594,13 +707,67 @@ class App extends React.Component {
 
             <div className="cols" style={{width: "49%"}}>
               <div className="mini-container">
-
+                <div className="mini-columns">
+                  <h4 style={{textAlign : "center", width: "100%"}}><em><u>Deals Originated by You</u></em></h4>
+                </div>
+                <div className = "mini-columns">
+                  <div className = "mini-cols" style={{width : "1%"}}></div>
+                  <div className = "mini-cols" style={{width : "96%", maxHeight: "150px", overflowY: "scroll", backgroundColor: "gainsboro"}}>
+                    <Table striped bordered hover size="sm" >
+                      <thead>
+                        <tr>
+                          <th>UUID</th>
+                          <th>Company address</th>
+                          <th>Company ID</th>
+                        </tr>
+                      </thead>
+                      <tbody style={{fontSize : "93%"}}>
+                        {parse(`${this.state.originatorString}`)}
+                      </tbody>        
+                    </Table>
+                  </div>
+                  <div className = "mini-cols" style={{width : "1%"}}></div>
+                </div>
+                <div className="mini-columns" style = {{paddingTop: "0.65em", paddingBottom: "0.25em"}}>
+                  <div className = "mini-cols" style={{width : "35%", textAlign : "right"}}>
+                    <Button variant="info" size = "md" style= {{width : "95%"}} onClick={(event) => this.DealSearchByAddress(event)}>Search for Deals by Address</Button> &ensp;
+                  </div>
+                  <div className = "mini-cols" style={{width : "60%", textAlign : "left"}}>
+                    <input type="text" id="AddressDealSearch" style={{width: "95%", backgroundColor: "beige"}} value={this.state.AddressDealSearch} onChange={(e)=>{this.setState({AddressDealSearch: e.target.value})}} />
+                  </div>
+                </div>
+                <div className="mini-columns" style = {{paddingTop: "0.25em", paddingBottom: "0.25em", display: this.state.AddressDealSearchResult.length===0 ? "none" : "block"}}>
+                  <div className = "mini-cols" style={{width : "100%", textAlign : "center"}}>
+                    {parse(`${this.state.AddressDealSearchResult}`)}
+                  </div>
+                </div>    
               </div>
             </div>
             <div className="cols" style={{width: "1%"}}></div>
 
           </div>
 
+          <div className="columns" style={{margin:"2em"}}>
+            <div className="cols" style={{width: "10%", textAlign: "center"}}></div>
+            <div className="cols" style={{width: "25%", textAlign: "right"}}>
+              UUID to verify:&ensp;
+            </div>
+            <div className="cols" style={{width: "30%", textAlign: "left"}}>
+              <input type="text" id="UUIDforVerify" style={{width: "95%", backgroundColor: "beige"}} value={this.state.UUIDVerify} onChange={(e)=>{this.setState({UUIDVerify: e.target.value})}} />
+            </div>
+		        <div className="cols" style={{width: "20%", textAlign: "left"}}>
+              <Button variant="primary" size = "md" onClick={(event) => this.runPebbleSimulatorVerify(event)}>Get Verify Data</Button>
+              </div>
+            <div className="cols" style={{width: "10%", textAlign: "center"}}></div>
+          </div>
+          <div className="columns" >
+            <div className="cols" style={{width: "40%", textAlign: "center"}}></div>
+            <div className="cols" style={{width: "20%", textAlign: "center"}}>
+              <Button variant="danger" size = "md" style = {{display : this.state.primedVerify ? "block" : "none"}} onClick={(event) => this.VerifyDealData(event)}>Verify</Button>
+            </div>
+            <div className="cols" style={{width: "40%", textAlign: "center"}}></div>
+          </div>
+          
       </div>
     );
   }

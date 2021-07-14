@@ -11,11 +11,13 @@ contract Escrow is Owner {
     mapping (address => bool) public adminMap;
     mapping (bytes32 => VerifyInfo) public verificationInfo;
 
-
     event Received(address indexed _sender, uint _amount);
     event BlackListAddition(address indexed _deviceAddress, string _reason);
     event WhiteListAddition(address indexed _deviceAddress, address indexed _approver);
     event AdminAdded(address indexed _added);
+    event NotOnWhiteList(bytes32 indexed _UUID);
+    event DateNotValid(bytes32 indexed _UUID);
+    event UncleanLevel(bytes32 _UUID);
 
     struct VerifyInfo {
         address payable companyAddress;
@@ -26,7 +28,7 @@ contract Escrow is Owner {
         ///Struct Packing rest of integers
         uint48 timeStart; ///start of Deal
         uint48 timeEnd; /// end of Deal
-        uint24 failedVerifyCount; ///failed verifications
+        uint24 SuccessVerify; ///successful verifications
         uint32 totalCurrentCount; ///total current verifications
         uint32 totalCountsAllowed; ///number of data points to be validated
         uint24 minThreshold; ///minimum number of successful validations to start receiving reward
@@ -70,19 +72,28 @@ contract Escrow is Owner {
         emit AdminAdded(_addedAdmin);
     }
 
-    function triggerPayout(address _to, uint _amount) external onlyStorageContract{
+    function triggerPayout(address payable _to, uint _balance, uint _success, uint _min, uint _max) public onlyAdmin{
         require(_to !=address(0), "Invalid address");
-        require(address(this).balance >= _amount);
+        require(address(this).balance >= _balance);
         //(bool sent, bytes memory data) = _to.call.value(_amount);
-        (bool sent, bytes memory data) = _to.call.value(_amount)("");
-        require(sent, "Transaction failed");
+        uint portion;
+        if (_success >= _max){
+        //(bool sent, bytes memory data) = _to.call.value(_balance)("");
+        //require(sent, "Transaction failed");
+        _to.transfer(_balance);
+        }
+        else if(_success>=_min){
+            portion = _balance/2 + _balance*(_success-_min)/(_max-_min);
+            _to.transfer(portion);
+            //(bool sent, bytes memory data) = _to.call.value(portion)("");
+        //require(sent, "Transaction failed");
+        }  
     }
 
     function addToWhiteList (address _deviceAddress) public onlyAdmin{
         require(!whiteList[_deviceAddress], "address on WhiteList");
         require(!blackList[_deviceAddress], "address banned");
         whiteList[_deviceAddress] = true;
-        
         emit WhiteListAddition(_deviceAddress, msg.sender);
     }
 
@@ -93,17 +104,41 @@ contract Escrow is Owner {
         emit BlackListAddition(_deviceAddress, _reason);
     }
 
-    function checkSimulatorAddress (string memory jsonString, bytes32 r , bytes32 s) public {
-        //bytes32 testHash = keccak256(bytes(jsonString));
-        //string memory jsonString = '{"message":{"snr":78,"vbat":2.21924,"latitude":4605.29358,"longitude":5352.96463,"gasResistance":10,"temperature":33.19269,"pressure":1555.48425,"humidity":68.59576,"light":1762.69028,"temperature2":45.26462,"gyroscope":[14,-1808,-10],"accelerometer":[2689,1808,3466],"timestamp":"1626009053476","random":"ba5a38466233a778"}}';
+    function checkSimulatorAddress (string memory jsonString, bytes32 r , bytes32 s) public returns (bool){
         bytes32 testHash = keccak256(abi.encodePacked(jsonString));
         address _deviceAddress;
         bool onWhiteList = false;
         for (uint8 v=27 ; v<29; v++){
             _deviceAddress = ecrecover(testHash, v, r, s);
-            addressesCheck[v-27]= _deviceAddress;
-                      
-        } 
+            //addressesCheck[v-27]= _deviceAddress;
+            if(whiteList[_deviceAddress]){
+                onWhiteList = true;
+            }
+        }
+        return onWhiteList;
+    }
+
+    function checkDealInfo (string memory jsonString, bytes32 r , bytes32 s, bytes32 _UUID, uint gasTarget, uint time) public onlyAdmin{
+        
+        require(!verificationInfo[_UUID].paidOut, "deal already paid out");
+        require(verificationInfo[_UUID].totalCurrentCount < verificationInfo[_UUID].totalCountsAllowed, "no more verification allowed");
+        verificationInfo[_UUID].totalCurrentCount ++;
+        if(!checkSimulatorAddress(jsonString, r, s)){
+            emit NotOnWhiteList(_UUID);
+        }
+        else if(time > verificationInfo[_UUID].timeEnd || time < verificationInfo[_UUID].timeStart){
+            emit DateNotValid(_UUID);
+        }
+        else if (gasTarget > verificationInfo[_UUID].gasResistanceTarget){
+            emit UncleanLevel(_UUID);
+        }
+        else{
+            verificationInfo[_UUID].SuccessVerify ++;
+        }
+        if(verificationInfo[_UUID].totalCurrentCount == verificationInfo[_UUID].totalCountsAllowed){
+            triggerPayout(verificationInfo[_UUID].companyAddress, verificationInfo[_UUID].dealBalance, verificationInfo[_UUID].SuccessVerify, verificationInfo[_UUID].minThreshold, verificationInfo[_UUID].maxThreshold);
+            verificationInfo[_UUID].paidOut = true;
+        }   
     }
 
     function returnSimulatorAddresses() public view returns(address[2] memory){
@@ -118,7 +153,7 @@ contract Escrow is Owner {
             dealBalance: intInfo[0],
             timeStart : uint48(intInfo[6]),
             timeEnd : uint48(intInfo[1]),
-            failedVerifyCount : 0,
+            SuccessVerify : 0,
             totalCurrentCount : 0,
             totalCountsAllowed : uint32(intInfo[2]),
             minThreshold : uint24(intInfo[3]), 
@@ -126,5 +161,4 @@ contract Escrow is Owner {
             gasResistanceTarget : uint16(intInfo[5])
             });
     }
-
 }

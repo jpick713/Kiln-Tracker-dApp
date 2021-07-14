@@ -54,6 +54,7 @@ contract StateMonitor is Owner {
         bool isActive; ///Is the deal still active?
         bytes32 uuid; ///ID of deal
         string companyID; ///Id to identify company being monitored
+        string deviceIMEI; ///deviceIMEI
         //string companyName; ///company name
         //DealInfo dealInformation;///Deal Information packed in struct to prevent too deep in stack
     }
@@ -220,7 +221,8 @@ contract StateMonitor is Owner {
             companyAddress : _companyAddress,
             uuid : newUUID,
             isActive : true,
-            companyID : _companyID
+            companyID : _companyID,
+            deviceIMEI : _deviceIMEI
         });
         dealsOriginator[msg.sender].push(dealToAdd);
         deals[dealToAdd.uuid] = dealToAdd;
@@ -284,6 +286,7 @@ contract StateMonitor is Owner {
         require(sent, "Failed to send");
     }
 
+    /*
     function triggerEscrow(address _to, uint _amount) private onlyAdmin{
         require(address(escrow).balance >= _amount, "Not enough in escrow");
         require(_to != address(0), "invalid address");
@@ -291,5 +294,5 @@ contract StateMonitor is Owner {
         //bytes memory payload = abi.encodeWithSignature("triggerPayout(address, uint)", _to, _amount);
         //(bool success, bytes memory returnData) = address(escrow).call(payload);
         //require(success);
-    }
+    }*/
 }
