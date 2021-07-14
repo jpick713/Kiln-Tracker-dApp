@@ -1,10 +1,10 @@
 ### EPA mock Simulator
 
-https://www.youtube.com/watch?v=qqDtAz8z9Xo
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=qqDtAz8z9Xo
+" target="_blank"><img src="http://img.youtube.com/vi/qqDtAz8z9Xo/0.jpg" 
+alt="" width="240" height="180" border="10" /></a>
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/qqDtAz8z9Xo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-
-In the project directory, you can open two commond lines:
+In the project directory, you can open two command windows:
 
 For server run 
 `node server.js`
