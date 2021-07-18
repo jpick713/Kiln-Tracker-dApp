@@ -56,7 +56,8 @@ class App extends React.Component {
       FormGasResistance : 0,
       UUIDVerify : "",
       primedVerify : false,
-      storeUUIDforVerify : ""
+      storeUUIDforVerify : "",
+      UUIDTestVerify : ""
     };
     
     this.addrFind = this.addrFind.bind(this);
@@ -72,6 +73,7 @@ class App extends React.Component {
     this.IMEISearch = this.IMEISearch.bind(this);
     this.InitiateDeal = this.InitiateDeal.bind(this);
     this.DealSearchByAddress = this.DealSearchByAddress.bind(this);
+    this.getVerificationInfo = this.getVerificationInfo.bind(this);
   }
 
   
@@ -175,6 +177,12 @@ class App extends React.Component {
     }
     this.setState({deviceString, originatorString, primedVerify : false});
   });
+  
+
+  this.state.monitorContract.events.DeviceRegistered()
+    .on('data', (event) => {
+      window.alert(event.returnValues._deviceOwner);
+    });
 }
 
 
@@ -253,12 +261,23 @@ class App extends React.Component {
       this.setState({UUIDVerify : ""});
       return;
     }
-    const deal = await this.state.monitorContract.methods.deals(this.state.UUIDVerify).call();
+
+    try{
+      const dealTry = await this.state.monitorContract.methods.deals(this.state.UUIDVerify).call()
+    } catch(error){
+      alert('error on UUID input. Make sure you have a valid UUID');
+      this.setState({UUIDVerify : ""});
+      return;
+    }
+    
+    const deal = await this.state.monitorContract.methods.deals(this.state.UUIDVerify).call()
+      
     if(!deal.isActive){
       alert('can only verify active deals');
       this.setState({UUIDVerify : ""});
       return;
-    }
+      }
+            
     const device = await this.state.monitorContract.methods.deviceIMEIs(deal.deviceIMEI).call();
     if(!device.exists){
       alert('can only verify deals with still registered devices'); //the delete device function not added, but if you had it this line is needed
@@ -295,17 +314,21 @@ class App extends React.Component {
     const body = await response.json();
     const msgArray = body.dataVerify;
     for (var i=0; i< 12; i++){
-    const msgString = msgArray[i];
-    const s = "0x" + msgString.substring(msgString.length-67, msgString.length-3);
-    const r = "0x" + msgString.substring(msgString.length-138, msgString.length-74);
-    const msgRaw = msgString.substring(0, msgString.length-157)+"}";
-    var colonSplit = msgString.split(":");
-    const gasResistance = Number(colonSplit[6].split(",")[0]);
-    const timeStamp = Number(colonSplit[14].split('"')[1]);
+      try{
+        const msgString = msgArray[i];
+        const s = "0x" + msgString.substring(msgString.length-67, msgString.length-3);
+        const r = "0x" + msgString.substring(msgString.length-138, msgString.length-74);
+        const msgRaw = msgString.substring(0, msgString.length-157)+"}";
+        var colonSplit = msgString.split(":");
+        const gasResistance = Number(colonSplit[6].split(",")[0]);
+        const timeStamp = Number(colonSplit[14].split('"')[1]);
     
-
-    await this.state.escrowContract.methods.checkDealInfo(msgRaw, r, s, this.state.storeUUIDforVerify, gasResistance, timeStamp).send({from: this.state.account});     
-    //const addressesArray = await this.state.escrowContract.methods.returnSimulatorAddresses().call();
+        await this.state.escrowContract.methods.checkDealInfo(msgRaw, r, s, this.state.storeUUIDforVerify, gasResistance, timeStamp).send({from: this.state.account});     
+        //const addressesArray = await this.state.escrowContract.methods.returnSimulatorAddresses().call();
+      }
+      catch(error){
+        window.alert(`on row ${i} there was error: ${error}`)
+      }
     }
     this.setState({primedVerify : false, UUIDVerify : ""});
     return body;
@@ -483,6 +506,11 @@ class App extends React.Component {
     this.setState({AddressDealSearchResult, AddressDealSearch : ""});
   }
   
+  getVerificationInfo = async (event) => {
+    event.preventDefault();
+    const checkVerifyInfo = await this.state.escrowContract.methods.verificationInfo(this.state.UUIDTestVerify).call();
+    alert(`Success: ${checkVerifyInfo.SuccessVerify} MinThreshold: ${checkVerifyInfo.minThreshold} MaxThreshold: ${checkVerifyInfo.maxThreshold} Total Current Count: ${checkVerifyInfo.totalCurrentCount}`);
+  }
 
   /* need to finish
   VerifyData = async () => {
@@ -766,6 +794,20 @@ class App extends React.Component {
               <Button variant="danger" size = "md" style = {{display : this.state.primedVerify ? "block" : "none"}} onClick={(event) => this.VerifyDealData(event)}>Verify</Button>
             </div>
             <div className="cols" style={{width: "40%", textAlign: "center"}}></div>
+          </div>
+
+          <div className="columns" style={{margin:"1em"}}>
+            <div className="cols" style={{width: "10%", textAlign: "center"}}></div>
+            <div className="cols" style={{width: "25%", textAlign: "right"}}>
+              Show Deal current info:&ensp;
+            </div>
+            <div className="cols" style={{width: "30%", textAlign: "left"}}>
+              <input type="text" id="UUIDforVerify" style={{width: "95%", backgroundColor: "beige"}} value={this.state.UUIDTestVerify} onChange={(e)=>{this.setState({UUIDTestVerify: e.target.value})}} />
+            </div>
+            <div className="cols" style={{width: "20%", textAlign: "left"}}>
+              <Button variant="primary" size = "md" onClick={(event) => this.getVerificationInfo(event)}>Get Current Deal Data</Button>
+            </div>            
+            <div className="cols" style={{width: "10%", textAlign: "center"}}></div>
           </div>
           
       </div>
