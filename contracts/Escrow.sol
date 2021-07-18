@@ -72,21 +72,21 @@ contract Escrow is Owner {
         emit AdminAdded(_addedAdmin);
     }
 
-    function triggerPayout(address payable _to, uint _balance, uint _success, uint _min, uint _max) public onlyAdmin{
+    function triggerPayout(address payable _to, uint _balance, uint _success, uint _min, uint _max) public payable onlyAdmin{
         require(_to !=address(0), "Invalid address");
         require(address(this).balance >= _balance);
         //(bool sent, bytes memory data) = _to.call.value(_amount);
         uint portion;
         if (_success >= _max){
-        //(bool sent, bytes memory data) = _to.call.value(_balance)("");
-        //require(sent, "Transaction failed");
-        _to.transfer(_balance);
+        (bool sent, bytes memory data) = _to.call.value(_balance)("");
+        require(sent, "Transaction failed");
+        //_to.transfer(_balance);
         }
         else if(_success>=_min){
-            portion = _balance/2 + _balance*(_success-_min)/(_max-_min);
-            _to.transfer(portion);
-            //(bool sent, bytes memory data) = _to.call.value(portion)("");
-        //require(sent, "Transaction failed");
+            portion = _balance/2 + _balance*(_success-_min)/(2*_max-2*_min);
+            //_to.transfer(portion);
+            (bool sent, bytes memory data) = _to.call.value(portion)("");
+            require(sent, "Transaction failed");
         }  
     }
 
