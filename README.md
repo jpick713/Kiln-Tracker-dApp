@@ -23,6 +23,8 @@ initial run do
 
 [pebble-simulator home](https://github.com/iotexproject/pebble-simulator)
 
+This is the raw simulator and you can hack the values for timestamp and gasResistance to be whatever you like after you import the simulator script, but if you would like to try exactly as in the video use the after-submit-improvements branch. It has the simulator set up exactly as in the video!
+
 ### `npm start`
 
 Runs the app in the development mode.
